@@ -146,7 +146,8 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         }
         .validate()?,
     );
-    let timeout = Some(Duration::from_millis(2000));
+
+    let tm = Some(Duration::from_millis(2000));
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -154,8 +155,8 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], None, timeout, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], None, tm, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::Learner, tm, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -163,7 +164,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), tm, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -174,14 +175,14 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router.new_raft_node(2).await;
     router.add_learner(orig_leader, 2).await?;
     n_logs += 1;
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), tm, "add one learner").await?;
 
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
     router.add_learner(orig_leader, 3).await?;
     router.add_learner(orig_leader, 4).await?;
     n_logs += 2;
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), tm, "add two learner").await?;
 
     let node = router.get_raft_handle(&orig_leader)?;
     node.change_membership(btreeset![1, 3, 4], true, false).await?;
@@ -192,7 +193,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout)
+            .wait(&orig_leader, tm)
             .await?
             .log(Some(n_logs), "old leader commits 2 membership log")
             .await?;
@@ -202,7 +203,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout)
+        .wait(&1, tm)
         .await?
         .log_at_least(Some(n_logs), "node in old cluster commits at least 1 membership log")
         .await?;
@@ -214,7 +215,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
         for id in [3, 4] {
             router
-                .wait(&id, timeout)
+                .wait(&id, timeout())
                 .await?
                 .log_at_least(
                     Some(n_logs),
@@ -246,7 +247,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
             .wait_for_log(
                 &btreeset![1, 2, 3, 4],
                 Some(n_logs),
-                timeout,
+                timeout(),
                 "test learner has new log",
             )
             .await?;
